@@ -11,6 +11,21 @@ The application's state is persisted in XDG_DATA_HOME/wlmstr/data.json.
 - [x]: support flake pkg
 - [ ]: feat: custom wallapepr contol command by config file(now, only support awww and mpbpaper)
 
+## Configuration
+
+supports 0.9.0+
+
+```toml: ~/.config/wlmstr/config.toml
+# awww img $PATH 👇
+[awww]
+args = [
+  "--transition-type",
+  "center",
+  "--transition-duration",
+  "0.5",
+]
+```
+
 ## Required
 
 - awww

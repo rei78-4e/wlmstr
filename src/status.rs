@@ -179,11 +179,10 @@ impl Status {
         })
     }
 
-    pub fn apply(&self) -> Result<(), Error> {
+    pub fn apply(&self, awww_config: Vec<String>) -> Result<(), Error> {
         let path = self.paper_path.to_string_lossy().to_string();
 
-        let row_is = is_image(&self.paper_path);
-        let is_image = row_is?;
+        let is_image = is_image(&self.paper_path)?;
 
         let res = if is_image {
             if let Some(pid) = find_mpvpaper().map_err(Error::ProcessFindErr)? {
@@ -193,16 +192,8 @@ impl Status {
                     return Err(Error::Io(std::io::Error::last_os_error()));
                 }
             }
-            std::process::Command::new("awww")
-                .args([
-                    "img",
-                    &path,
-                    "--transition-type",
-                    "center",
-                    "--transition-duration",
-                    "0.5",
-                ])
-                .output()
+            let args = [vec!["img".to_string(), path.to_string()], awww_config].concat();
+            std::process::Command::new("awww").args(args).output()
         } else {
             let mpv_args = format!("--mpv-args=\"{}\"", "--hwdec=auto-safe --panscan=1.0");
             std::process::Command::new("mpvpaper")

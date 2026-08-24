@@ -1,13 +1,16 @@
 use crate::Derection::Sequence;
+use crate::config::Config;
 use crate::status::{FmtStatus, Status};
 use clap::{Args, Parser, Subcommand, ValueEnum, error::Result};
 use easy_storage::Storeable;
 // use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::io;
 use std::path::PathBuf;
 
 const PROGRAM_NAME: &str = "wlmstr";
 
+mod config;
 mod status;
 
 #[derive(Debug)]
@@ -22,6 +25,19 @@ enum Error {
     NoWallpaperFound,
     NotSupportFile(String),
     ProcessFindErr(procfs::ProcError),
+    StoreErr(easy_storage::Error),
+}
+
+impl From<io::Error> for Error {
+    fn from(value: io::Error) -> Self {
+        Self::Io(value)
+    }
+}
+
+impl From<easy_storage::Error> for Error {
+    fn from(value: easy_storage::Error) -> Self {
+        Self::StoreErr(value)
+    }
 }
 
 impl Display for Error {
@@ -53,6 +69,7 @@ impl Display for Error {
             Error::NoWallpaperFound => todo!(),
             Error::NotSupportFile(p) => write!(f, "not supports file type: {}", p),
             Error::ProcessFindErr(proc_error) => write!(f, "{}", proc_error),
+            Error::StoreErr(error) => write!(f, "{}", error),
         }
     }
 }
@@ -63,6 +80,9 @@ impl Display for Error {
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    #[arg(long = "debug")]
+    is_debug_mode: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -138,7 +158,7 @@ fn resolve_data_path() -> Result<PathBuf, Error> {
         .ok_or(Error::NotFoundXDGDATAPATH)
 }
 
-fn run(cli_cmd: Commands) -> Result<(), Error> {
+fn run(cli_cmd: Commands, config: Config) -> Result<(), Error> {
     let data_path = resolve_data_path()?;
 
     let load_paths = |dir: PathBuf| -> Result<Vec<std::path::PathBuf>, Error> {
@@ -149,14 +169,16 @@ fn run(cli_cmd: Commands) -> Result<(), Error> {
             .collect())
     };
 
+    let awww_args = config.awww.args;
+
     // let loaded_path_lst = load_paths(loaded_status.get_dir_path())?;
     let new_st = match Status::load_by_extension(&data_path) {
         Ok(loaded_status) => match cli_cmd {
             Commands::Next(next_prm) => {
                 let loaded_path_lst = load_paths(loaded_status.get_dir_path())?;
-                let s = loaded_status.next(next_prm.derection, loaded_path_lst)?;
-                s.apply()?;
-                s
+                let new_status = loaded_status.next(next_prm.derection, loaded_path_lst)?;
+                new_status.apply(awww_args)?;
+                new_status
             }
             Commands::Status(sc) => {
                 let next_path = {
@@ -205,9 +227,29 @@ fn run(cli_cmd: Commands) -> Result<(), Error> {
     Ok(())
 }
 
+fn resolve_config() -> Result<Config, Error> {
+    let config_path =
+        xdg::BaseDirectories::with_prefix("wlmstr").place_config_file("config.toml")?;
+
+    Ok(Config::load_by_extension(config_path)?)
+}
+
 fn main() {
     let cli = Cli::parse();
-    let res = run(cli.command);
+
+    let loaded_config = resolve_config().unwrap_or_default();
+
+    if cli.is_debug_mode {
+        let config_path = xdg::BaseDirectories::with_prefix("wlmstr")
+            .place_config_file("config.toml")
+            .unwrap();
+        println!("loaded config path: {:?}", config_path);
+        println!("config file exists: {:?}", config_path.exists());
+        println!("loaded config obj:  {:?}", loaded_config);
+    }
+
+    let res = run(cli.command, loaded_config);
+
     match res {
         Ok(_) => std::process::exit(0),
         Err(e) => {

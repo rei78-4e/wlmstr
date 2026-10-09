@@ -20,3 +20,7 @@ jobs:
       run: cargo check --verbose
     - name: Run tests
       run: cargo test --verbose
+    - name: Install GTK4
+      run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev
+    - name: check (gui)
+      run: cargo check --features gui --verbose

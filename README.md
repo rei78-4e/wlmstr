@@ -69,6 +69,20 @@ Then add the package to your Home Manager configuration:
 nix profile install github:Uliboooo/wlmstr
 ```
 
+### GUI (GTK4)
+
+A simple GTK4 front end (`wlmstr-gui`) is available behind the `gui` feature.
+It shows a preview of the current wallpaper, prev / random / next buttons and a folder picker.
+It shares the same state file and config as the CLI.
+
+```bash
+# nix (Linux only)
+nix run github:Uliboooo/wlmstr#gui
+
+# cargo (requires GTK4 development files, e.g. libgtk-4-dev / gtk4-devel)
+cargo install --path . --features gui
+```
+
 ## Usage
 
 ```zsh

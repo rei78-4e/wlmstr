@@ -221,7 +221,7 @@ impl Status {
     }
 }
 
-fn is_image<P: AsRef<Path>>(path: P) -> Result<bool, Error> {
+pub fn is_image<P: AsRef<Path>>(path: P) -> Result<bool, Error> {
     let a = &path
         .as_ref()
         .extension()

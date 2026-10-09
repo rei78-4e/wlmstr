@@ -4,7 +4,7 @@ Ordered roughly by severity. Clippy is clean — these are all logic/design bugs
 
 ## Crashes / panics
 
-1. **`todo!()` in error display — `src/main.rs:52`**
+1. ~~**`todo!()` in error display — `src/main.rs:52`**~~ (fixed: now prints a message, `src/lib.rs`)
    `Error::NoWallpaperFound => todo!()`. Any time this error surfaces (empty wallpaper dir),
    `main`'s `eprint!("{}", e)` hits the `todo!()` and the program **panics** instead of
    printing an error message.

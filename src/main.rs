@@ -1,78 +1,8 @@
-use crate::Derection::Sequence;
-use crate::config::Config;
-use crate::status::{FmtStatus, Status};
 use clap::{Args, Parser, Subcommand, ValueEnum, error::Result};
-use easy_storage::Storeable;
-// use serde::{Deserialize, Serialize};
-use std::fmt::Display;
-use std::io;
 use std::path::PathBuf;
-
-const PROGRAM_NAME: &str = "wlmstr";
-
-mod config;
-mod status;
-
-#[derive(Debug)]
-enum Error {
-    FailedProcess(bool, String, String),
-    Io(std::io::Error),
-    NotFoundXDGDATAPATH,
-    ValueNotSet,
-    InsufficientValues,
-    SerializeErr(serde_json::Error),
-    FileIo(easy_storage::Error),
-    NoWallpaperFound,
-    NotSupportFile(String),
-    ProcessFindErr(procfs::ProcError),
-    StoreErr(easy_storage::Error),
-}
-
-impl From<io::Error> for Error {
-    fn from(value: io::Error) -> Self {
-        Self::Io(value)
-    }
-}
-
-impl From<easy_storage::Error> for Error {
-    fn from(value: easy_storage::Error) -> Self {
-        Self::StoreErr(value)
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::Io(e) => write!(f, "IO Error: {}", e),
-            Error::NotFoundXDGDATAPATH => write!(
-                f,
-                "XDG_DATA_HOME is not set.\n\nThis program uses XDG_DATA_HOME/{}/ to store its data.\nIf you are not using Linux or a standard XDG-compatible environment,please set the XDG_DATA_HOME environment variable manually.Not dound XDG_DATA_HOME.\nThis Program use XDG_DATA_HOME/{}/ to keep path data.\nIf you don't use Linux or standard envrinment",
-                PROGRAM_NAME, PROGRAM_NAME
-            ),
-            Error::ValueNotSet => write!(
-                f,
-                "The wallpaper directory path has not been set.\nPlease run `set` subcommand\nwlmstr set -d <dir-path> -p <start-img-path>)"
-            ),
-            Error::InsufficientValues => write!(
-                f,
-                "Insufficient values; values for dir and start img path are all required for initialization."
-            ),
-            Error::SerializeErr(e) => write!(f, "Serialize Error: {}", e),
-            Error::FailedProcess(is_awww, v, p) => write!(
-                f,
-                "failed to process {}: {}\n{}",
-                if *is_awww { "awww" } else { "mpbpaper" },
-                v,
-                p
-            ),
-            Error::FileIo(e) => write!(f, "File IO Error: {}", e),
-            Error::NoWallpaperFound => todo!(),
-            Error::NotSupportFile(p) => write!(f, "not supports file type: {}", p),
-            Error::ProcessFindErr(proc_error) => write!(f, "{}", proc_error),
-            Error::StoreErr(error) => write!(f, "{}", error),
-        }
-    }
-}
+use wlmstr::config::Config;
+use wlmstr::status::FmtStatus;
+use wlmstr::{Derection, Error, PROGRAM_NAME};
 
 ///  Stateful wallpaper slideshow CLI for awww
 #[derive(Debug, Parser)]
@@ -99,32 +29,6 @@ struct Next {
     derection: Derection,
 }
 
-#[derive(Debug, Clone, ValueEnum)]
-enum Derection {
-    #[value(name = "seq")]
-    Sequence,
-
-    #[value(name = "pre")]
-    Previous,
-
-    #[value(name = "rnd")]
-    Random,
-}
-
-impl Display for Derection {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Derection::Sequence => "seq",
-                Derection::Previous => "pre",
-                Derection::Random => "rnd",
-            }
-        )
-    }
-}
-
 /// show current status(dir and paper path). supports to output in JSON or debug format
 #[derive(Debug, Args)]
 struct StatusCmd {
@@ -148,77 +52,31 @@ struct SetCmd {
     paper_path: Option<PathBuf>,
 }
 
-fn resolve_data_path() -> Result<PathBuf, Error> {
-    std::env::var_os("XDG_DATA_HOME")
-        .map(|f| {
-            PathBuf::from(f.to_string_lossy().to_string())
-                .join("wlmstr")
-                .join("data.json")
-        })
-        .ok_or(Error::NotFoundXDGDATAPATH)
-}
-
 fn run(cli_cmd: Commands, config: Config) -> Result<(), Error> {
-    let data_path = resolve_data_path()?;
-
-    let load_paths = |dir: PathBuf| -> Result<Vec<std::path::PathBuf>, Error> {
-        Ok(std::fs::read_dir(dir)
-            .map_err(Error::Io)?
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .collect())
-    };
-
-    let awww_args = config.awww.args;
-
-    // let loaded_path_lst = load_paths(loaded_status.get_dir_path())?;
-    let new_st = match Status::load_by_extension(&data_path) {
-        Ok(loaded_status) => match cli_cmd {
-            Commands::Next(next_prm) => {
-                let loaded_path_lst = load_paths(loaded_status.get_dir_path())?;
-                let new_status = loaded_status.next(next_prm.derection, loaded_path_lst)?;
-                new_status.apply(awww_args)?;
-                new_status
-            }
-            Commands::Status(sc) => {
-                let next_path = {
-                    let loaded_path_lst = load_paths(loaded_status.get_dir_path())?;
-                    loaded_status
-                        .next(Sequence, loaded_path_lst)?
-                        .get_current_p_path()
-                };
-                let formatted = FmtStatus::new(&loaded_status, next_path);
-                let res = match sc.format.unwrap_or(StatusFmt::Debug) {
-                    StatusFmt::Json => {
-                        serde_json::to_string_pretty(&formatted).map_err(Error::SerializeErr)?
-                    }
-                    StatusFmt::Debug => formatted.to_string(),
-                };
-                println!("{}", res);
-                return Ok(());
-            }
-            Commands::Set(input_set_data) => {
-                loaded_status.set(input_set_data.dir, input_set_data.paper_path)?
-            }
-        },
-        Err(_) => {
-            // when not found XDG_DATA_HOME/wlmstr/data.json
-            match cli_cmd {
-                Commands::Set(set) => match (set.dir, set.paper_path) {
-                    (Some(dir), Some(p_path)) => Status::new(dir, p_path),
-                    (Some(dir), None) => {
-                        let d = Status::get_first_paper_in_dir(&dir)?;
-                        Status::new(dir, d)
-                    }
-                    _ => return Err(Error::InsufficientValues),
-                },
-                _ => return Err(Error::ValueNotSet),
-            }
+    let new_st = match cli_cmd {
+        Commands::Next(next_prm) => wlmstr::step(next_prm.derection, config.awww.args)?,
+        Commands::Status(sc) => {
+            let loaded_status = wlmstr::load_status()?;
+            let next_path = {
+                let loaded_path_lst = wlmstr::load_paths(loaded_status.get_dir_path())?;
+                loaded_status
+                    .next(Derection::Sequence, loaded_path_lst)?
+                    .get_current_p_path()
+            };
+            let formatted = FmtStatus::new(&loaded_status, next_path);
+            let res = match sc.format.unwrap_or(StatusFmt::Debug) {
+                StatusFmt::Json => {
+                    serde_json::to_string_pretty(&formatted).map_err(Error::SerializeErr)?
+                }
+                StatusFmt::Debug => formatted.to_string(),
+            };
+            println!("{}", res);
+            return Ok(());
+        }
+        Commands::Set(input_set_data) => {
+            wlmstr::set(input_set_data.dir, input_set_data.paper_path)?
         }
     };
-    new_st
-        .save_by_extension(data_path, true)
-        .map_err(Error::FileIo)?;
 
     println!(
         "change to {}",
@@ -227,17 +85,10 @@ fn run(cli_cmd: Commands, config: Config) -> Result<(), Error> {
     Ok(())
 }
 
-fn resolve_config() -> Result<Config, Error> {
-    let config_path =
-        xdg::BaseDirectories::with_prefix("wlmstr").place_config_file("config.toml")?;
-
-    Ok(Config::load_by_extension(config_path)?)
-}
-
 fn main() {
     let cli = Cli::parse();
 
-    let loaded_config = resolve_config().unwrap_or_default();
+    let loaded_config = wlmstr::resolve_config().unwrap_or_default();
 
     if cli.is_debug_mode {
         let config_path = xdg::BaseDirectories::with_prefix("wlmstr")

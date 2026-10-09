@@ -39,6 +39,31 @@
             meta.mainProgram = cargoToml.package.name;
           };
         }
+        # GTK4 GUI (awww / mpvpaper are Wayland only, so Linux only)
+        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          gui = pkgs.rustPlatform.buildRustPackage {
+            pname = "${cargoToml.package.name}-gui";
+            version = cargoToml.package.version;
+
+            src = ./.;
+
+            cargoLock = {
+              lockFile = ./Cargo.lock;
+            };
+            buildFeatures = [ "gui" ];
+
+            nativeBuildInputs = with pkgs; [
+              pkg-config
+              wrapGAppsHook4
+            ];
+            buildInputs = with pkgs; [
+              gtk4
+              gst_all_1.gst-plugins-base
+              gst_all_1.gst-plugins-good
+            ];
+            meta.mainProgram = "${cargoToml.package.name}-gui";
+          };
+        }
       );
 
       apps = forAllSystems (
@@ -55,13 +80,19 @@
         { pkgs, ... }:
         {
           default = pkgs.mkShell {
-            packages = with pkgs; [
-              rustc
-              cargo
-              rust-analyzer
-              clippy
-              rustfmt
-            ];
+            packages =
+              with pkgs;
+              [
+                rustc
+                cargo
+                rust-analyzer
+                clippy
+                rustfmt
+              ]
+              ++ lib.optionals stdenv.isLinux [
+                pkg-config
+                gtk4
+              ];
           };
         }
       );

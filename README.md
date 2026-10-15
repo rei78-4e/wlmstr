@@ -9,21 +9,30 @@ The application's state is persisted in XDG_DATA_HOME/wlmstr/data.json.
 - [ ]: check work video mode
 - [ ]: enhance help and error printings
 - [x]: support flake pkg
-- [ ]: feat: custom wallapepr contol command by config file(now, only support awww and mpbpaper)
+- [x]: feat: custom wallpaper control command by config file
 
 ## Configuration
 
-supports 0.9.0+
+`~/.config/wlmstr/config.toml`
 
-```toml: ~/.config/wlmstr/config.toml
-# awww img $PATH 👇
-[awww]
-args = [
-  "--transition-type",
-  "center",
-  "--transition-duration",
-  "0.5",
-]
+The commands used to set wallpapers are configurable. `{path}` is replaced with the wallpaper path; if no argument contains `{path}`, the path is appended to the end. Unset entries use the defaults below.
+
+```toml
+[apply]
+# default: awww img {path} --transition-type center --transition-duration 0.5
+image = ["awww", "img", "{path}", "--transition-type", "center", "--transition-duration", "0.5"]
+# default: mpvpaper * {path} ... (mpvpaper is stopped automatically when switching back to an image)
+# video = ["mpvpaper", "*", "{path}", "-o", "no-audio loop", "--fork"]
+```
+
+The `[awww] args = [...]` form from 0.9.0 is still accepted as extra arguments for `awww img`, but `[apply] image` takes precedence.
+
+### Use with other tools
+
+`wlmstr next --print` only advances the state and prints the next path to stdout, without setting the wallpaper:
+
+```sh
+swaybg -i "$(wlmstr next --print)"
 ```
 
 ## Required

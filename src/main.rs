@@ -15,7 +15,9 @@ mod status;
 
 #[derive(Debug)]
 enum Error {
-    FailedProcess(bool, String, String),
+    /// (program, detail, wallpaper path)
+    FailedProcess(String, String, String),
+    InvalidConfig(String),
     Io(std::io::Error),
     NotFoundXDGDATAPATH,
     ValueNotSet,
@@ -58,13 +60,10 @@ impl Display for Error {
                 "Insufficient values; values for dir and start img path are all required for initialization."
             ),
             Error::SerializeErr(e) => write!(f, "Serialize Error: {}", e),
-            Error::FailedProcess(is_awww, v, p) => write!(
-                f,
-                "failed to process {}: {}\n{}",
-                if *is_awww { "awww" } else { "mpbpaper" },
-                v,
-                p
-            ),
+            Error::FailedProcess(program, v, p) => {
+                write!(f, "failed to process {}: {}\n{}", program, v, p)
+            }
+            Error::InvalidConfig(msg) => write!(f, "invalid config: {}", msg),
             Error::FileIo(e) => write!(f, "File IO Error: {}", e),
             Error::NoWallpaperFound => todo!(),
             Error::NotSupportFile(p) => write!(f, "not supports file type: {}", p),
@@ -97,6 +96,10 @@ enum Commands {
 struct Next {
     #[arg(default_value_t = Derection::Sequence)]
     derection: Derection,
+
+    /// don't set the wallpaper; only update the state and print the path to stdout
+    #[arg(long = "print")]
+    print_only: bool,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -169,15 +172,20 @@ fn run(cli_cmd: Commands, config: Config) -> Result<(), Error> {
             .collect())
     };
 
-    let awww_args = config.awww.args;
-
     // let loaded_path_lst = load_paths(loaded_status.get_dir_path())?;
     let new_st = match Status::load_by_extension(&data_path) {
         Ok(loaded_status) => match cli_cmd {
             Commands::Next(next_prm) => {
                 let loaded_path_lst = load_paths(loaded_status.get_dir_path())?;
                 let new_status = loaded_status.next(next_prm.derection, loaded_path_lst)?;
-                new_status.apply(awww_args)?;
+                if next_prm.print_only {
+                    new_status
+                        .save_by_extension(data_path, true)
+                        .map_err(Error::FileIo)?;
+                    println!("{}", new_status.get_current_p_path().to_string_lossy());
+                    return Ok(());
+                }
+                new_status.apply(&config)?;
                 new_status
             }
             Commands::Status(sc) => {
@@ -253,7 +261,7 @@ fn main() {
     match res {
         Ok(_) => std::process::exit(0),
         Err(e) => {
-            eprint!("{}", e);
+            eprintln!("{}", e);
             std::process::exit(1)
         }
     }

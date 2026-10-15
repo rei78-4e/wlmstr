@@ -1,3 +1,4 @@
+use crate::config::{Config, expand_cmd};
 use crate::{Derection, Error};
 use easy_storage::Storeable;
 use itertools::Itertools;
@@ -179,12 +180,12 @@ impl Status {
         })
     }
 
-    pub fn apply(&self, awww_config: Vec<String>) -> Result<(), Error> {
+    pub fn apply(&self, config: &Config) -> Result<(), Error> {
         let path = self.paper_path.to_string_lossy().to_string();
 
         let is_image = is_image(&self.paper_path)?;
 
-        let res = if is_image {
+        let template = if is_image {
             if let Some(pid) = find_mpvpaper().map_err(Error::ProcessFindErr)? {
                 let pid: libc::pid_t = pid;
                 let ret = unsafe { libc::kill(pid, libc::SIGTERM) };
@@ -192,31 +193,30 @@ impl Status {
                     return Err(Error::Io(std::io::Error::last_os_error()));
                 }
             }
-            let args = [vec!["img".to_string(), path.to_string()], awww_config].concat();
-            std::process::Command::new("awww").args(args).output()
+            config.image_cmd()
         } else {
-            let mpv_args = format!("--mpv-args=\"{}\"", "--hwdec=auto-safe --panscan=1.0");
-            std::process::Command::new("mpvpaper")
-                .args([
-                    "*",
-                    self.paper_path.to_string_lossy().as_ref(),
-                    "-o",
-                    "no-audio loop",
-                    "--fork",
-                    "-o",
-                    "no-audio loop --panscan=1.0",
-                    &mpv_args,
-                ])
-                .output()
+            config.video_cmd()
         };
 
-        match res {
-            Ok(_) => Ok(()),
-            Err(e) => Err(Error::FailedProcess(
-                is_image,
-                e.to_string(),
-                path.to_string(),
-            )),
+        let args = expand_cmd(&template, &path);
+        let (program, rest) = args
+            .split_first()
+            .ok_or_else(|| Error::InvalidConfig("apply command is empty".to_string()))?;
+
+        let failed = |detail: String| Error::FailedProcess(program.clone(), detail, path.clone());
+        let output = std::process::Command::new(program)
+            .args(rest)
+            .output()
+            .map_err(|e| failed(e.to_string()))?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(failed(format!(
+                "{}\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim_end()
+            )))
         }
     }
 }

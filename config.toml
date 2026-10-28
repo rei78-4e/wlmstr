@@ -1,8 +1,0 @@
-# `{path}` is replaced with the wallpaper path.
-# If no argument contains `{path}`, the path is appended to the end.
-[apply]
-image = [
-  "awww", "img", "{path}",
-  "--transition-type", "wave",
-  "--transition-duration", "0.5",
-]

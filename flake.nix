@@ -1,69 +1,39 @@
 {
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  description = "Babashka development shell";
 
-  outputs =
-    { self, nixpkgs, ... }:
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+  };
+
+  outputs = { self, nixpkgs }:
     let
       systems = [
-        "aarch64-darwin"
-        "x86_64-darwin"
         "x86_64-linux"
         "aarch64-linux"
+        "x86_64-darwin"
+        "aarch64-darwin"
       ];
-
-      forAllSystems =
-        f:
-        nixpkgs.lib.genAttrs systems (
-          system:
-          f {
-            pkgs = nixpkgs.legacyPackages.${system};
-            inherit system;
-          }
-        );
-
-      cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+      forAllSystems = f:
+        nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
     in
     {
-      packages = forAllSystems (
-        { pkgs, ... }:
-        {
-          default = pkgs.rustPlatform.buildRustPackage {
-            pname = cargoToml.package.name;
-            version = cargoToml.package.version;
+      devShells = forAllSystems (pkgs: {
+        default = pkgs.mkShell {
+          packages = with pkgs; [
+            babashka       # bb
+            clj-kondo      # linter
+            cljfmt         # formatter
+            clojure-lsp    # language server
+            # clojure      # JVM Clojure が必要な場合はコメントを外す
+            # jdk          # 同上
+          ];
 
-            src = ./.;
+          shellHook = ''
+            echo "babashka $(bb --version)"
+          '';
+        };
+      });
 
-            cargoLock = {
-              lockFile = ./Cargo.lock;
-            };
-            meta.mainProgram = cargoToml.package.name;
-          };
-        }
-      );
-
-      apps = forAllSystems (
-        { system, ... }:
-        {
-          default = {
-            type = "app";
-            program = "${self.packages.${system}.default}/bin/${cargoToml.package.name}";
-          };
-        }
-      );
-
-      devShells = forAllSystems (
-        { pkgs, ... }:
-        {
-          default = pkgs.mkShell {
-            packages = with pkgs; [
-              rustc
-              cargo
-              rust-analyzer
-              clippy
-              rustfmt
-            ];
-          };
-        }
-      );
+      formatter = forAllSystems (pkgs: pkgs.nixpkgs-fmt);
     };
 }

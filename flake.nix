@@ -17,6 +17,20 @@
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
     in
     {
+      packages = forAllSystems (pkgs: {
+        default =
+          pkgs.runCommand "wlmstr"
+            {
+              nativeBuildInputs = [ pkgs.makeWrapper ];
+              meta.mainProgram = "wlmstr";
+            }
+            ''
+              mkdir -p $out/share/wlmstr
+              cp -r ${./src} $out/share/wlmstr/src
+              makeWrapper ${pkgs.babashka-unwrapped}/bin/bb $out/bin/wlmstr \
+                --add-flags "--classpath $out/share/wlmstr/src -m wlmstr.core"
+            '';
+      });
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
           packages = with pkgs; [

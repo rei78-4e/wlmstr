@@ -12,11 +12,11 @@
 (defn find-papers [dir]
   (let [exts #{"avif" "jpg" "jpeg" "jxl" "png" "gif" "pnm" "pbm" "pgm" "ppm"
                "pam" "tga" "tif" "tiff" "webp" "bmp" "ff" "svg"}]
-    (->>
-     (filter fs/regular-file? (fs/glob dir "**" {:follow-links true}))
-     (filter #(some-> (fs/extension %) clojure.string/lower-case exts))
-     (map str)
-     (sort))))
+    (->> (fs/glob dir "**" {:follow-links true})
+         (filter fs/regular-file?)
+         (filter #(some-> (fs/extension %) str/lower-case exts))
+         (map str)
+         (sort))))
 
 (defn status-file-path []
   (fs/path (or (System/getenv "XDG_DATA_HOME")
@@ -28,15 +28,16 @@
   ([path] (json/parse-string (slurp (fs/file path)) csk/->kebab-case-keyword)))
 
 (defn write-status [data]
-  (with-open [w (clojure.java.io/writer (status-file-path))]
-    (json/generate-stream data  w {:key-fn csk/->camelCaseString
-                                   :pretty true})))
+  (with-open [w (io/writer (fs/file (status-file-path)))]
+    (json/generate-stream data w {:key-fn csk/->camelCaseString
+                                  :pretty true})))
 
-(defn next-paper-path [list current derection]
-  (case (str/lower-case (or derection "seq"))
+(defn next-paper-path [list current direction]
+  (case (str/lower-case (or direction "seq"))
     ("seq" "sequence") (or (second (drop-while #(not= % current) list)) (first list))
     ("pre" "previous") (or (second (drop-while #(not= % current) (reverse list))) (last list))
-    ("rnd" "random") (rand-nth list)))
+    ("rnd" "random") (rand-nth list)
+    (throw (ex-info (str "unknown direction: " direction) {}))))
 
 (defn change-paper [path]
   (shell "awww img --transition-type wave --transition-duration 0.5" path))
@@ -48,24 +49,18 @@
         direction (first args)
         next-path (next-paper-path papers current direction)]
     (change-paper next-path)
-    (->
-     (assoc status :paper-path next-path)
-     (write-status)))
-  "END!!")
+    (write-status (assoc status :paper-path next-path))
+    next-path))
 
-(defn status [] "status")
-
-(defn merge-status [status opts]
-  (let [{:keys [dir path]} (merge status opts)]
-    [dir path]))
+(defn status [_] (load-status))
 
 (defn set-status [{:keys [opts]}]
-  (-> (let [{:keys [dir new-path]} opts]
-        (merge-status (load-status)
-                      (cond-> {}
-                        dir (assoc :dir dir)
-                        new-path (assoc :path new-path))))
-      (write-status)))
+  (let [{:keys [dir new-path]} opts]
+    (write-status
+     (cond-> (load-status)
+       dir      (assoc :dir-path (str dir))
+       new-path (assoc :paper-path (str new-path))))
+    "updated"))
 
 (defn version [_]
   (let [config (some-> (System/getProperty "babashka.config")
@@ -73,15 +68,15 @@
                        edn/read-string)]
     (:wlmstr/version config)))
 
-(defn help [] "help")
+(defn help [_]
+  "usage: next [seq|pre|rnd] | set --dir DIR --new-path FILE | status | version")
 
 (defn -main [& args]
-  (->>
-   (let [table
-         [{:cmds ["next"] :fn next-paper}
-          {:cmds ["status"] :fn status}
-          {:cmds ["set"] :fn set-status}
-          {:cmds ["version"] :fn version}
-          {:cmds ["help"] :fn help}]]
-     (cli/dispatch table args))
-   (println)))
+  (println
+   (cli/dispatch
+    [{:cmds ["next"]    :fn next-paper}
+     {:cmds ["status"]  :fn status}
+     {:cmds ["set"]     :fn set-status}
+     {:cmds ["version"] :fn version}
+     {:cmds ["help"]    :fn help}]
+    args)))

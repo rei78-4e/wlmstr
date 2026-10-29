@@ -19,6 +19,13 @@
     {
       packages = forAllSystems (pkgs: {
         default =
+          let
+            # bb.edn の :deps は --classpath 指定時に読まれないので jar を直接渡す
+            camel-snake-kebab = pkgs.fetchurl {
+              url = "https://repo.clojars.org/camel-snake-kebab/camel-snake-kebab/0.4.3/camel-snake-kebab-0.4.3.jar";
+              hash = "sha256-gZHzNXdjENeFekCtMyVL5mrbNjgGsYE22IQxlpI6wsg=";
+            };
+          in
           pkgs.runCommand "wlmstr"
             {
               nativeBuildInputs = [ pkgs.makeWrapper ];
@@ -28,7 +35,7 @@
               mkdir -p $out/share/wlmstr
               cp -r ${./src} $out/share/wlmstr/src
               makeWrapper ${pkgs.babashka-unwrapped}/bin/bb $out/bin/wlmstr \
-                --add-flags "--classpath $out/share/wlmstr/src -m wlmstr.core"
+                --add-flags "--classpath $out/share/wlmstr/src:${camel-snake-kebab} -m wlmstr.core"
             '';
       });
       devShells = forAllSystems (pkgs: {

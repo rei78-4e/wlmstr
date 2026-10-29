@@ -1,2 +1,31 @@
 /target
 .direnv/
+/.clj-kondo/.cache/v1
+# clj-kondo
+.clj-kondo/.cache
+
+# clojure-lsp
+.lsp/.cache
+
+# Clojure CLI (deps.edn)
+.cpcache/
+
+# Leiningen
+target/
+.lein-*
+.nrepl-port
+.prepl-port
+
+# shadow-cljs
+.shadow-cljs/
+node_modules/
+
+# Calva
+.calva/output-window/
+.calva/repl.calva-repl
+
+# Editors / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
